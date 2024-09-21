@@ -1,0 +1,19 @@
+Pod:
+- !!python/tuple
+  - metadata.name
+  - mypod
+- !!python/tuple
+  - spec.containers[0].image
+  - nginx
+- !!python/tuple
+  - spec.containers[0].ports
+  - - containerPort: 80
+- !!python/tuple
+  - metadata.name
+  - mypod
+metadata:
+  name: fafa
+spec:
+  containers[0]:
+    image: fafsa
+    ports: afafa

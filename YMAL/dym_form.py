@@ -1,5 +1,5 @@
-from flask import Flask, request
-from keywords import find_k8s_keywords_dfs, load_yaml_file
+from flask import Flask, request, render_template_string
+from keywords import find_k8s_keywords_dfs, load_yaml_file , save_yaml_file
 
 # Base form structure
 form_structure = {
@@ -33,34 +33,45 @@ form_structure.update(add_dynamic_fields(dynamic_data))
 
 # Route for displaying the form
 
-def Form():
+def form_view():
     if request.method == 'POST':
-        # Handle form submission
+        # Capture submitted form data and update the dynamic data
         submitted_data = {field: request.form[field] for field in form_structure if field != 'submit'}
-        return f"Form submitted! Data: {submitted_data}"
 
-    # Generate HTML for the form dynamically
+        # Convert the submitted data back into the original YAML format
+        updated_yaml_data = update_yaml_structure(dynamic_data, submitted_data)
+
+        # Save the updated data to a new YAML file
+        save_yaml_file(updated_yaml_data, 'updated_example.yaml')
+
+        # Return a confirmation message
+        return f"Form submitted and YAML saved! Data: {submitted_data}"
+
+    # Generate the form HTML dynamically
     form_html = '<form method="POST">'
     for field, props in form_structure.items():
         if props['type'] != 'submit':
-            # Retrieve the current value, handling nested structures (like dictionaries or lists)
             current_value = props.get('value', '')
-            
-            # If current_value is a dictionary or list, format it as a string
-            if isinstance(current_value, (dict, list)):
-                formatted_value = f'{current_value}'
-            else:
-                formatted_value = current_value
 
             # Render the form field
             form_html += f'<label for="{field}">{props["label"]}</label>'
-            form_html += f'<input type="{props["type"]}" name="{field}" id="{field}" placeholder="{props["placeholder"]}" value="{formatted_value}">'
-            # Add the current value (formatted) next to the form field
-            form_html += f' <span>Value: {formatted_value}</span> <br><br>'
+            form_html += f'<input type="{props["type"]}" name="{field}" id="{field}" placeholder="{props["placeholder"]}" value="{current_value}">'
+            form_html += f' <span>Value: {current_value}</span> <br><br>'
         else:
             form_html += f'<button type="submit">{props["label"]}</button>'
     form_html += '</form>'
 
-    return form_html  # Send the generated HTML as the response
+    return render_template_string(form_html)
+
+# Helper function to update the YAML structure with the submitted form data
+def update_yaml_structure(original_yaml_data, submitted_data):
+    for field, new_value in submitted_data.items():
+        # Update the value in the original YAML data
+        sections = field.split('.')
+        target = original_yaml_data
+        for section in sections[:-1]:
+            target = target.setdefault(section, {})
+        target[sections[-1]] = new_value
+    return original_yaml_data
 
 

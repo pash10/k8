@@ -244,6 +244,12 @@ def load_yaml_file(file_path):
         data = yaml.safe_load(file)  # Load the YAML file into a Python dict
     return data
 
+
+def save_yaml_file(yaml_data, file_path):
+    """Saves the given YAML data to a specified file."""
+    with open(file_path, 'w') as file:
+        yaml.dump(yaml_data, file)
+
 # Example usage
 yaml_file_path = 'exmple.yaml'  # Ensure the file path is correct
 input_text = load_yaml_file(yaml_file_path)
