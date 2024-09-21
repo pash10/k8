@@ -188,7 +188,9 @@ def dfs_search(graph, keyword, current_node):
             for key in graph[current_node]:
                 result = dfs_search(graph, keyword, f"{current_node}.{key}")
                 if result:
+                    print(result)
                     return result
+
     # Check if there's an array-like structure (e.g., spec.containers[0])
     for key in graph:
         if keyword in key.replace("[0]", ""):
