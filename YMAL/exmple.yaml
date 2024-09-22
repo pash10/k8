@@ -1,12 +1,32 @@
-apiVersion: v1
-kind: Pod
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: mypod
+  name: my-deployment
+  namespace: my-namespace
   labels:
     app: myapp
 spec:
-  containers:
-    - name: mycontainer
-      image: nginx
-      ports:
-        - containerPort: 80
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: mycontainer
+          image: nginx:1.14.2
+          ports:
+            - containerPort: 80
+          env:
+            - name: MY_ENV_VAR
+              value: "production"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+      volumes:
+        - name: config-volume
+          configMap:
+            name: my-config-map

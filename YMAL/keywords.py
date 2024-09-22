@@ -128,36 +128,6 @@ k8s_keywords = {
     ]
 }
 
-
-def flatten_dict(input_dict, parent_key='', sep='.'):
-    """Flatten a nested dictionary, handling lists and sub-dictionaries."""
-    items = []
-    for k, v in input_dict.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else k
-        if isinstance(v, dict):
-            items.extend(flatten_dict(v, new_key, sep=sep).items())
-        elif isinstance(v, list):
-            for i, item in enumerate(v):
-                if isinstance(item, dict):
-                    # Handle dictionaries inside lists (like containers)
-                    items.extend(flatten_dict(item, f"{new_key}[{i}]", sep=sep).items())
-                else:
-                    # Add list items as individual elements
-                    items.append((f"{new_key}[{i}]", item))
-        else:
-            items.append((new_key, v))
-    return dict(items)
-
-def unflatten_dict(d, sep='.'):
-    result = {}
-    for key, value in d.items():
-        keys = key.split(sep)
-        d_nested = result
-        for k in keys[:-1]:
-            d_nested = d_nested.setdefault(k, {})
-        d_nested[keys[-1]] = value
-    return result
-
 def yaml_to_graph(yaml_dict):
     """Convert YAML dictionary to a graph structure."""
     graph = {}
@@ -178,42 +148,49 @@ def yaml_to_graph(yaml_dict):
     return graph
 
 def dfs_search(graph, keyword, current_node):
-    
     # Check if the current node exists in the graph
     if current_node in graph:
+        # If the keyword matches the current node, return the match
         if keyword in current_node:
             return current_node, graph[current_node]
         elif isinstance(graph[current_node], dict):
-            # Continue searching deeper into the nested structure
+            # Recursively search deeper in the nested dictionary
             for key in graph[current_node]:
                 result = dfs_search(graph, keyword, f"{current_node}.{key}")
                 if result:
-                    print(result)
                     return result
 
-    # Check if there's an array-like structure (e.g., spec.containers[0])
+    # Handle cases where the keyword is part of an array (e.g., containers[0])
     for key in graph:
-        if keyword in key.replace("[0]", ""):
+        # Simplified check to handle array indices like [0], [1]
+        if keyword in key.replace("[0]", "").replace("[1]", ""):  # Ignore list indices for matching
             return key, graph[key]
+
     return None
+
+
 def find_k8s_keywords_dfs(input_text):
     # Convert YAML to a graph structure
     graph = yaml_to_graph(input_text)
+       # Debugging output to check the flattened structure
+
+
     matches = {}
 
     # Print flattened YAML structure for debugging
     print("Flattened YAML structure:")
-    for key, value in graph.items():
-        print(f"{key}: {value}")
-    
+    for key , value in graph.items():
+      print(f"{key}: {value}")
     # Extract the kind (resource type) from the YAML file
+    print('/n')
     resource_type = graph.get("kind")
     if not resource_type:
         print("Resource type (kind) not found in YAML.")
         return matches
 
     print(f"Resource type identified: {resource_type}")
-
+    
+    
     # Perform DFS-based search only for the relevant resource type
     if resource_type in k8s_keywords["spec"]:
         print(f"Searching resource type: {resource_type}")
@@ -226,6 +203,7 @@ def find_k8s_keywords_dfs(input_text):
                         if resource_type not in matches:
                             matches[resource_type] = []
                         matches[resource_type].append(match)
+
         else:
             for keyword in resource_keywords:
                 match = dfs_search(graph, keyword, resource_type)
@@ -239,23 +217,86 @@ def find_k8s_keywords_dfs(input_text):
     # Print matches for debugging
     print("Matches found:", matches)
     return matches
+def rebuild_k8s_yaml_from_graph(matches, graph):
+    """Rebuild the YAML structure based on the matches and graph, ensuring metadata fields are added."""
+    rebuilt_yaml = {}
+
+    # Metadata fields to check and add if they exist
+    metadata_fields = ["apiVersion", "kind", "name", "namespace", "labels", "annotations"]
+
+    # Ensure apiVersion and kind are added
+    if "apiVersion" in graph:
+        rebuilt_yaml["apiVersion"] = graph["apiVersion"]
+    if "kind" in graph:
+        rebuilt_yaml["kind"] = graph["kind"]
+
+    # Rebuild the metadata section
+    rebuilt_yaml["metadata"] = {}
+    for field in metadata_fields:
+        field_key = f"metadata.{field}"
+        if field_key in graph:
+            rebuilt_yaml["metadata"][field] = graph[field_key]
+
+    # Rebuild the spec section based on resource type
+    if "spec" in graph:
+        rebuilt_yaml["spec"] = graph["spec"]
+
+    # Insert matched elements back into the proper structure
+    for resource_type, match_list in matches.items():
+        for match in match_list:
+            key, value = match
+            keys = key.split(".")  # Split the key into its nested components
+            d_nested = rebuilt_yaml
+            for k in keys[:-1]:
+                if "[" in k and "]" in k:  # Handle list indices
+                    list_key, index = k.split("[")
+                    index = int(index[:-1])  # Get the actual index
+                    if list_key not in d_nested:
+                        d_nested[list_key] = []
+                    while len(d_nested[list_key]) <= index:
+                        d_nested[list_key].append({})
+                    d_nested = d_nested[list_key][index]
+                else:
+                    d_nested = d_nested.setdefault(k, {})
+            # Preserve quotes on specific strings like "production"
+            d_nested[keys[-1]] = value if isinstance(value, (dict, list)) else f'"{value}"'
+
+    return rebuilt_yaml
 
 # Load a YAML file
 def load_yaml_file(file_path):
     with open(file_path, 'r') as file:
         data = yaml.safe_load(file)  # Load the YAML file into a Python dict
     return data
+class QuotedDumper(yaml.SafeDumper):
+    def represent_str(self, data):
+        # Check if the value should be quoted explicitly
+        if  isinstance(data, str):
+            return self.represent_scalar('tag:yaml.org,2002:str', data, style='"')
+        return super().represent_str(data)
 
-
+# Use the custom dumper when saving the YAML
+# Use the custom dumper when saving the YAML
 def save_yaml_file(yaml_data, file_path):
-    """Saves the given YAML data to a specified file."""
+    """Saves the given YAML data to a specified file, ensuring quoted strings."""
     with open(file_path, 'w') as file:
-        yaml.dump(yaml_data, file)
+        yaml.dump(yaml_data, file, Dumper=QuotedDumper, default_flow_style=False, sort_keys=False)
 
 # Example usage
 yaml_file_path = 'exmple.yaml'  # Ensure the file path is correct
 input_text = load_yaml_file(yaml_file_path)
+
+# Convert YAML to graph
+graph = yaml_to_graph(input_text)
+
+# Find matching keywords in the graph
 matching_keywords = find_k8s_keywords_dfs(input_text)
+
+# Rebuild the YAML from the matches and the graph
+rebuilt_yaml = rebuild_k8s_yaml_from_graph(matching_keywords, graph)
+
+# Save the rebuilt YAML to a file
+save_yaml_file(rebuilt_yaml, "rebuilt_output.yaml")
 
 # Print the matching keywords
 for key, value in matching_keywords.items():
