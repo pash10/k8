@@ -1,4 +1,5 @@
 import  yaml
+from yaml.loader import SafeLoader
 
 # Define a dictionary with common Kubernetes YAML keywords
 k8s_keywords = {
@@ -217,6 +218,7 @@ def find_k8s_keywords_dfs(input_text):
     # Print matches for debugging
     print("Matches found:", matches)
     return matches
+
 def rebuild_k8s_yaml_from_graph(matches, graph):
     """Rebuild the YAML structure based on the matches and graph, ensuring metadata fields are added."""
     rebuilt_yaml = {}
@@ -258,29 +260,56 @@ def rebuild_k8s_yaml_from_graph(matches, graph):
                     d_nested = d_nested[list_key][index]
                 else:
                     d_nested = d_nested.setdefault(k, {})
-            # Preserve quotes on specific strings like "production"
-            d_nested[keys[-1]] = value if isinstance(value, (dict, list)) else f'"{value}"'
+
+            # Correct handling of string values with extra quotes
+            if isinstance(value, str):
+                # If the value starts and ends with quotes, remove them
+                if value.startswith('"') and value.endswith('"'):
+                    d_nested[keys[-1]] = value[1:-1]  # Strip the extra quotes
+                else:
+                    d_nested[keys[-1]] = value  # Leave as-is if no extra quotes
+            else:
+                d_nested[keys[-1]] = value  # Handle non-string values as-is
 
     return rebuilt_yaml
 
-# Load a YAML file
-def load_yaml_file(file_path):
-    with open(file_path, 'r') as file:
-        data = yaml.safe_load(file)  # Load the YAML file into a Python dict
-    return data
+
+class QuotedLoader(SafeLoader):
+    """Custom loader to preserve quotes in the YAML data."""
+    def construct_scalar(self, node):
+        value = super().construct_scalar(node)
+        # Return the value with quotes if the node style requires it
+        if isinstance(value, str) and node.style == '"':
+            # Keep quotes if explicitly required in the YAML
+            return f'"{value}"'
+        return value
+
+# Custom dumper to ensure strings are quoted when necessary
 class QuotedDumper(yaml.SafeDumper):
     def represent_str(self, data):
-        # Check if the value should be quoted explicitly
-        if  isinstance(data, str):
-            return self.represent_scalar('tag:yaml.org,2002:str', data, style='"')
-        return super().represent_str(data)
+        # Only wrap the string in quotes if necessary
+        if isinstance(data, str) and (":" in data or " " in data):
+            # Wrap the string in quotes if it contains special characters
+            return self.represent_scalar('tag:yaml.org,2002:str', data)
+        # Otherwise, return the string without extra quotes
+        return self.represent_scalar('tag:yaml.org,2002:str', data)
 
-# Use the custom dumper when saving the YAML
-# Use the custom dumper when saving the YAML
+
+# Load a YAML file using the QuotedLoader
+def load_yaml_file(file_path):
+    """Loads the given YAML file and preserves quoted strings."""
+    with open(file_path, 'r') as file:
+        data = yaml.load(file, Loader=QuotedLoader)  # Load the YAML file into a Python dict
+    return data
+
+# Save a YAML file using the QuotedDumper
 def save_yaml_file(yaml_data, file_path):
     """Saves the given YAML data to a specified file, ensuring quoted strings."""
     with open(file_path, 'w') as file:
         yaml.dump(yaml_data, file, Dumper=QuotedDumper, default_flow_style=False, sort_keys=False)
+
+
+# Example usage:
 
 # Example usage
 yaml_file_path = 'exmple.yaml'  # Ensure the file path is correct

@@ -22,7 +22,7 @@ spec:
         - containerPort: 80
         env:
         - name: MY_ENV_VAR
-          value: production
+          value: '"production"'
         volumeMounts:
         - name: config-volume
           mountPath: /etc/config
