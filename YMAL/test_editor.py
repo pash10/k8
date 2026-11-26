@@ -19,6 +19,17 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(yaml.safe_load(response.data)["spec"]["replicas"], 4)
 
+    def test_download_retains_security_context(self):
+        response = self.client.post("/", data=self.fields)
+        self.assertEqual(response.status_code, 200)
+        spec = yaml.safe_load(response.data)["spec"]["template"]["spec"]
+        self.assertTrue(spec["securityContext"]["runAsNonRoot"])
+        self.assertFalse(spec["automountServiceAccountToken"])
+        security = spec["containers"][0]["securityContext"]
+        self.assertTrue(security["readOnlyRootFilesystem"])
+        self.assertFalse(security["allowPrivilegeEscalation"])
+        self.assertEqual(security["capabilities"]["drop"], ["ALL"])
+
     def test_csrf(self):
         self.assertEqual(self.client.post("/", data={**self.fields, "csrf_token": "wrong"}).status_code, 403)
 
