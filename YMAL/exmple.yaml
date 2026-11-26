@@ -15,18 +15,44 @@ spec:
       labels:
         app: myapp
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: mycontainer
-          image: nginx:1.14.2
+          image: nginxinc/nginx-unprivileged:stable-alpine
           ports:
-            - containerPort: 80
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
           env:
             - name: MY_ENV_VAR
-              value: "production"
+              value: production
           volumeMounts:
             - name: config-volume
               mountPath: /etc/config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config-volume
           configMap:
             name: my-config-map
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
