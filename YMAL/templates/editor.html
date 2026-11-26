@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Deployment editor</title></head>
+<body>
+<h1>Deployment editor</h1>
+<form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+{% for field, value in values.items() %}
+<p><label>{{ field }} <input name="{{ field }}" value="{{ value }}" required></label></p>
+{% endfor %}
+<button type="submit">Download YAML</button>
+</form>
+</body>
+</html>
